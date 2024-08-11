@@ -32,7 +32,7 @@ def apply_return_multi_row():
         first_row = group.iloc[0] # 取dataFrame的第一行
         return pd.DataFrame({'class': [first_row['class']] * first_row['count']})
 
-    df2 = df.groupby('class', group_keys=False).apply(f)
+    df2 = df.groupby('class', as_index=False, group_keys=False).apply(f)
     #df2 = df.groupby('class', group_keys=True).apply(f)
     print(df2)
 
