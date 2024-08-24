@@ -135,8 +135,8 @@ def RoPE(q:torch.Tensor, k:torch.Tensor):
        q2*cos(m*theta1)-q3*sin(m*theta1),
        q3*cost(m*theta1)+q2*sin(m*theta1),
        ...
-      q(d-2)*cos(m*theta(dim/2))-q(d-1)*sin(m*theta(dim/2)),
-      q(d-1)*cos(m*theta(dim/2))-q(d-2)*sin(m*theta(dim/2))
+       q(d-2)*cos(m*theta(dim/2))-q(d-1)*sin(m*theta(dim/2)),
+       q(d-1)*cos(m*theta(dim/2))-q(d-2)*sin(m*theta(dim/2))
     ]
     
     """
@@ -161,4 +161,7 @@ if __name__ == "__main__":
     query_rope, key_rope = RoPE(query, key)
     print(query_rope.shape)
     print(key_rope.shape)
-    print(query_rope)
+    print("q[0][0]:\n", query_rope[0][0])
+    query_rope2 = query_rope.permute(0,2,1,3).contiguous() # batch, seq_len, head_num, head_dim
+    print("query_rope[0][0]:\n", query_rope2[0][0])
+    print("query_rope[0][1]:\n", query_rope2[0][1])
