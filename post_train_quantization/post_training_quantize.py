@@ -83,8 +83,12 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load('ckpt/mnist_cnn.pt', map_location='cpu'))
         save_file = "ckpt/mnist_cnn_ptq.pt"
 
-    #model.eval()
-    #full_inference(model, test_loader)
+    print("量化之前")
+    for param in model.fc.parameters():
+        print(param)
+
+    model.eval()
+    full_inference(model, test_loader)
 
     # 8bit量化
     num_bits = 8
@@ -104,6 +108,7 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), save_file)
     model.freeze()
 
+    print("量化之后")
     for param in model.fc.parameters():
         print(param)
 
