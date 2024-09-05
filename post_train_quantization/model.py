@@ -99,6 +99,11 @@ class NetBN(nn.Module):
         return x
 
     def quantize(self, num_bits=8):
+        """
+        即更改普通layer为带有量化参数量化的layer
+        :param num_bits:
+        :return:
+        """
         self.qconv1 = QConvBNReLU(self.conv1, self.bn1, qi=True, qo=True, num_bits=num_bits)
         self.qmaxpool2d_1 = QMaxPooling2d(kernel_size=2, stride=2, padding=0)
         self.qconv2 = QConvBNReLU(self.conv2, self.bn2, qi=False, qo=True, num_bits=num_bits)
@@ -115,6 +120,12 @@ class NetBN(nn.Module):
         return x
 
     def freeze(self):
+        """
+        由于我们在量化⽹络的时候，有些模块是没有定义 qi 的，因此这⾥需要传⼊前⾯层的 qo 作为 当前层的 qi。
+        同时计算好各layer一些可以提前计算的变量: sum(Zw*Zx), sum(qw*Zx)
+
+        freeze 就是把这些项提前固定下来，同时也将⽹络的权重由浮点实数转化为定点整数。
+        """
         self.qconv1.freeze()
         self.qmaxpool2d_1.freeze(self.qconv1.qo)
         self.qconv2.freeze(qi=self.qconv1.qo)
