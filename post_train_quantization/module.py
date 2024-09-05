@@ -287,8 +287,41 @@ class QLinear(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update_statistic(x)
-            # 不明白此处伪量化的意义
-            x = FakeQuantize.apply(x, self.qi)
+            """
+            Straight Through Estimator
+            
+            在量化训练中，由于 round 函数的存在，我们⽆法正常求导，因此退⽽求其次，在反向
+            传播的时候⽤ STE 跳过了这个函数。这个「跳过」，就是把 STE 的导数默认为 1。
+            但这种做法有个副作⽤，由于它⽆法反应真实的量化误差，所以，不管量化位数有多少
+            (8 ⽐特、4 ⽐特等等)，导数都是⼀样的
+            
+            在量化训练中需要加⼊伪量化节点 (Fake Quantize)，这些节点做的事情就是把输⼊的
+            float 数据量化⼀遍后，再反量化回 float，以此来模拟量化误差，同时在反向传播的时
+            候，发挥 STE (自动梯度回传) 的功能，把导数回传到前⾯的层。
+            
+            在做量化训练的时候，需要在⽹络结构的每个节点中插⼊伪量化节点。这些节点主要有
+            两个作⽤：
+            ⼀是统计 weight 和 feature map 的 minmax 等量化参数；
+            ⼆是量化训练的时候承担 STE 的作⽤，可以让反向传播进⾏下去。
+            
+            ⼤家都知道，pytorch 中真正定义⽹络结构的地⽅是在 forward 函数。因此，要完成⾃
+            动插⼊伪量化节点这个⼯作，就需要⼀套⼯具，可以⾃动对 forward 函数进⾏解析，得
+            到整个⽹络的拓扑结构。
+            
+            不过，遗憾的是，在 torch.fx 之前，这样的⼯具⼏乎没有。所以，⼤部分量化框架的做
+            法，是在 __init__ 函数定义的 Module 中插⼊伪量化节点。因为 pytorch 会⾃动注册
+            这部分 Module，所以可以逐个遍历这些 Module 并⾃动化地插⼊伪量化节点。但对于
+            ⾮ Module 定义的节点就爱莫能助了。
+            
+            不过，⾃从 pytorch1.8 推出 FX 这套⼯具后，情况有了很⼤的改观。这套⼯具终于可以
+            ⽐较好地解析整个 forward 流程，并以 python 代码的形式返回整个⽹络结构。
+            有了这套⼯具加持后，可以做到真正⾃动化地插⼊伪量化节点，我在之前的⽂章中也对
+            ⽐了 FX 和 eager quantization 的差别，真的是全新的体验。
+            
+            注意：
+            伪量化节点一般只在量化感知训练时才有用,
+            """
+            x = FakeQuantize.apply(x, self.qi) # 伪量化节点`
 
         self.qw.update_statistic(self.fc_module.weight.data)
 
@@ -319,7 +352,6 @@ class QLinear(QModule):
 
 
 class QReLU(QModule):
-
     def __init__(self, qi=False, num_bits=None):
         super(QReLU, self).__init__(qi=qi, num_bits=num_bits)
 
