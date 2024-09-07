@@ -45,6 +45,16 @@ def test_ds():
     dataset2 = Dataset.from_pandas(df)
     print(dataset2)  # 查看数据的结构
 
+def test_init_empty():
+    import torch.nn as nn
+    from accelerate import init_empty_weights
+
+    """
+    # 测试好像不行，仍然会分配内存
+    with init_empty_weights():
+        model = nn.Sequential([nn.Linear(100000, 100000) for _ in range(1000)])  # This will take ~0 RAM!
+    """
 
 if __name__ == "__main__":
     test_ds()
+    #test_init_empty()
