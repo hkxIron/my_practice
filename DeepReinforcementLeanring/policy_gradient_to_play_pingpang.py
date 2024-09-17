@@ -22,16 +22,14 @@ if resume:
     model = pickle.load(open('save.p', 'rb'))
 else:
     model = {}
-    model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization
-    model['W2'] = np.random.randn(H) / np.sqrt(H)
+    model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization, w/sqrt(f_in)
+    model['W2'] = np.random.randn(H) / np.sqrt(H) # w/sqrt(f_in)
 
 grad_buffer = {k: np.zeros_like(v) for k, v in model.items()}  # update buffers that add up gradients over a batch
 rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()}  # rmsprop memory
 
-
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))  # sigmoid "squashing" function to interval [0,1]
-
 
 def prepro(I):
     """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
@@ -43,14 +41,14 @@ def prepro(I):
     return I.astype(np.float).ravel()
 
 
-def discount_rewards(r:np.array):
+def discount_rewards(r:np.array)->np.array:
     """ take 1D float array of rewards and compute discounted reward """
     discounted_r = np.zeros_like(r)
     running_add = 0
     for t in reversed(range(0, r.size)):
         if r[t] != 0:
             running_add = 0  # reset the sum, since this was a game boundary (pong specific!)
-        running_add = running_add * gamma + r[t]
+        running_add = r[t] + running_add * gamma # 当前的收益加上未来拆扣的收益
         discounted_r[t] = running_add
     return discounted_r
 
@@ -65,20 +63,24 @@ def policy_forward(x):
 
 
 # 计算参数梯度
-def policy_backward(eph, epdlogp):
+def policy_backward(episode_hidden_states, d_episode_logprobs):
     """ backward pass. (eph is array of intermediate hidden states) """
-    dW2 = np.dot(eph.T, epdlogp).ravel()
-    dh = np.outer(epdlogp, model['W2'])
-    dh[eph <= 0] = 0  # backpro prelu
-    dW1 = np.dot(dh.T, epx)
+    # p=sigmoid(W2*relu(W1*x))
+    dW2 = np.dot(episode_hidden_states.T, d_episode_logprobs).ravel()
+    dh = np.outer(d_episode_logprobs, model['W2'])
+    dh[episode_hidden_states <= 0] = 0  # backpro prelu
+    dW1 = np.dot(dh.T, episode_xs)
     return {'W1': dW1, 'W2': dW2}
 
 
 print("all_envs:", gym.envs.registry.keys())
-env = gym.make("Pong-v0") # 打乒乓球
+env = gym.make("Pong-v1") # 打乒乓球
+#env = gym.make("Pendulum-v1") # 打乒乓球
+#env = gym.make("LunarLander-v2") # 打乒乓球
+
 observation = env.reset()
 prev_x = None  # used in computing the difference frame
-xs, hs, dlogps, episode_reward_list = [], [], [], []
+xs, hidden_states, dlogps, episode_reward_list = [], [], [], []
 running_reward = None
 reward_sum = 0
 episode_number = 0
@@ -92,15 +94,17 @@ while True:
     prev_x = cur_x
 
     # forward the policy network and sample an action from the returned probability
-    action_prob, h = policy_forward(x) # 预测采取不同动作的概率
+    action_prob, hidden_state = policy_forward(x) # 预测采取不同动作的概率
+
+    # action只能取两个值：2和3
     action = 2 if np.random.uniform() < action_prob else 3  # roll the dice, 骰子
 
     # record various intermediates (needed later for backprop)
     xs.append(x)  # observation
-    hs.append(h)  # hidden state
+    hidden_states.append(hidden_state)  # hidden state
     y = 1 if action == 2 else 0  # a "fake label"
     # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
-    dlogps.append(y - action_prob)
+    dlogps.append(y - action_prob) # mse差值
 
     # step the environment and get new measurements
     observation, reward, episode_is_done, info = env.step(action)
@@ -112,11 +116,11 @@ while True:
         episode_number += 1
 
         # stack together all inputs, hidden states, action gradients, and rewards for this episode
-        epx = np.vstack(xs)
-        eph = np.vstack(hs)
-        epdlogp = np.vstack(dlogps)
+        episode_xs = np.vstack(xs)
+        episode_hidden_states = np.vstack(hidden_states)
+        episode_dlogp = np.vstack(dlogps)
         episode_rewards = np.vstack(episode_reward_list)
-        xs, hs, dlogps, episode_reward_list = [], [], [], []  # reset array memory
+        xs, hidden_states, dlogps, episode_reward_list = [], [], [], []  # reset array memory
 
         # 一局游戏结束了，计算折扣reward
         # compute the discounted reward backwards through time
@@ -125,10 +129,13 @@ while True:
         discounted_eposide_reward -= np.mean(discounted_eposide_reward)
         discounted_eposide_reward /= np.std(discounted_eposide_reward)
 
-        epdlogp *= discounted_eposide_reward  # modulate the gradient with advantage (PG magic happens right here.)
-        grad = policy_backward(eph, epdlogp)
+        # policy gradient:
+        # grad(x) = discounted_reward * dlogp(x)
+        episode_dlogp *= discounted_eposide_reward  # modulate the gradient with advantage (PG magic happens right here.)
+        grad = policy_backward(episode_hidden_states, episode_dlogp)
+
         for k,v in model.items():
-            grad_buffer[k] += grad[k]  # accumulate grad over batch
+            grad_buffer[k] += grad[k]  # accumulate grad over batch for rmsprop
 
         # perform rmsprop parameter update every batch_size episodes
         if episode_number % batch_size == 0:
