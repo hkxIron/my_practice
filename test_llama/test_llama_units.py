@@ -1,7 +1,7 @@
 from transformers.models.llama import LlamaModel, LlamaConfig
 import torch
 import sys
-
+from typing import *
 
 def test_llama_forward():
     scale = 2
@@ -46,6 +46,23 @@ def test_llama_forward():
     """
     print(llama_model)
 
+def pad_to_length(tensor: torch.Tensor, length: int, pad_value: Union[int, float], dim: int = -1) -> torch.Tensor:
+    if tensor.size(dim) >= length:
+        return tensor
+    else:
+        # tensor: (batch_size, sequence_length).
+        pad_size = list(tensor.shape)
+        pad_size[dim] = length - tensor.size(dim)
+        return torch.cat([tensor, pad_value * torch.ones(*pad_size, dtype=tensor.dtype, device=tensor.device)], dim=dim)
+
+
+def test_pad():
+    x = torch.randn((4,3))
+    max_len= 5
+    x_pad = pad_to_length(x, max_len, pad_value=0)
+    print(x_pad)
+
 if __name__ == "__main__":
     print("args:", sys.argv)
+    test_pad()
     test_llama_forward()
