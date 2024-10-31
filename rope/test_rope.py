@@ -247,7 +247,7 @@ def test_hf_and_meta_rope():
     """
     # torch.allclose()函数参数rtol是相对误差容忍度，atol是绝对误差容忍度。调整这两个参数可以根据需要控制比较的严格程度。
     print(torch.allclose(my_qk_dot, meta_qk_dot, rtol=1e-5, atol=1e-8))
-    # 但发现二者确实不相等,按道理说这样应该有问题
+    # 但发现二者确实不相等,按道理说这样应该有问题??不知何故
     print(torch.allclose(hf_qk_dot, meta_qk_dot, rtol=1e-5, atol=1e-8)) # False
 
 
