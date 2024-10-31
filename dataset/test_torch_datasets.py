@@ -1,3 +1,5 @@
+from typing import List
+
 import torch.utils.data
 from torchvision import datasets
 import os
@@ -38,8 +40,8 @@ def test_collate2():
         break
 
 def test_collate3():
-    def collate(batch_list):
-        assert type(batch_list) == list, f"Error"
+    def collate(batch_list:List):
+        assert type(batch_list) == list, f"must be list"
         batch_size = len(batch_list)
         # 得到图像的rgb值
         data = torch.cat([torch.Tensor(item[0].getdata()) for item in batch_list]).reshape(batch_size, -1)

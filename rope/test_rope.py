@@ -1,5 +1,14 @@
+from typing import Optional, Tuple
+
 import torch
+from transformers import PretrainedConfig
+
+from rope.huggingface_llama_rope import HuggingFaceLlamaRotaryEmbedding
+from rope.huggingface_llama_rope import apply_rotary_pos_emb as apply_rotary_pos_emb_hf
+from rope.meta_llama_rope import precompute_freqs_cis
+from rope.meta_llama_rope import apply_rotary_emb as apply_rotary_emb_meta
 from utils.util import *
+from torch import nn
 
 # blog: https://kexue.fm/archives/8265
 def sin_cos_position_embedding(batch_size,
@@ -151,11 +160,11 @@ def RoPE(q:torch.Tensor, k:torch.Tensor):
     k = k * cos_pos + k_imag * sin_pos
     return q, k
 
-if __name__ == "__main__":
+
+def test_my_rope():
     setup_seed(3407)
 
     batch_size, head_num, max_len, head_dim = 2, 3, 4, 6
-
     query = torch.randn([batch_size, head_num, max_len, head_dim])
     key = torch.randn_like(query)
     query_rope, key_rope = RoPE(query, key)
@@ -165,3 +174,83 @@ if __name__ == "__main__":
     query_rope2 = query_rope.permute(0,2,1,3).contiguous() # batch, seq_len, head_num, head_dim
     print("query_rope[0][0]:\n", query_rope2[0][0])
     print("query_rope[0][1]:\n", query_rope2[0][1])
+
+def test_hf_and_meta_rope():
+    setup_seed(3407)
+
+    batch_size, head_num, max_len, head_dim = 2, 3, 4, 6
+    query = torch.randn([batch_size, head_num, max_len, head_dim])
+    key = torch.randn_like(query)
+
+    print("=============自己实现的rope======================")
+    query_rope, key_rope = RoPE(query, key)
+    qk_dot = torch.matmul(query_rope, key_rope.transpose(2,3))
+    # query:[batch_size, num_head, seq_len, seq_len]
+    my_qk_dot = qk_dot.detach() # 或者clone()
+    print(query_rope.shape)
+    print(key_rope.shape)
+    print(qk_dot.shape)
+    print("q[0][0]:\n", query_rope[0][0])
+    print("k[0][0]:\n", key_rope[0][0])
+    print("qk_dot[0]:\n", qk_dot[0])
+
+    print("\n=============huggingface transformers实现的rope======================")
+    hf_rope_layer = HuggingFaceLlamaRotaryEmbedding(dim=head_dim,  max_position_embeddings=max_len, base=10000)
+    position_ids = torch.arange(0, max_len, 1,  dtype=torch.int64).float().unsqueeze(0).expand(batch_size,-1)
+    print(position_ids)
+    # query: [batch_size, num_key_value_heads, seq_len, head_dim], x为query或key
+    # position_ids: [batch_size, seq_len]
+    # cos,sin: [batch,seq_len,head_dim]
+    cos, sin = hf_rope_layer.forward(query, position_ids)
+    # query:[batch_size, num_head, seq_len, head_dim]
+    # key: [batch_size, num_key_value_heads, seq_len, head_dim]
+    query_rope, key_rope = apply_rotary_pos_emb_hf(query, key, cos, sin)  # 对 query,key应用rope,因为它们要进行内积
+    # query:[batch_size, num_head, seq_len, seq_len]
+    qk_dot = torch.matmul(query_rope, key_rope.transpose(2,3))
+    hf_qk_dot = qk_dot.detach() # 或者clone()
+
+    print(query_rope.shape)
+    print(key_rope.shape)
+    print(qk_dot.shape)
+    print("q[0][0]:\n", query_rope[0][0])
+    print("k[0][0]:\n", key_rope[0][0])
+    print("qk_dot[0]:\n", qk_dot[0])
+
+    print("\n=============meta实现的rope======================")
+    # Note that self.params.max_seq_len is multiplied by 2 because the token limit for the Llama 2 generation of models is 4096.
+    # Adding this multiplier instead of using 4096 directly allows for dynamism of token lengths while training or fine-tuning.
+    freqs_cis = precompute_freqs_cis(head_dim, max_len, 10000)
+
+    # query:[batch_size, num_head, seq_len, head_dim]
+    # key: [batch_size, num_key_value_heads, seq_len, head_dim]
+    # query_rope: [batch_size, seq_len, num_head, head_dim]
+    # key_rope: [batch_size, seq_len, num_head, head_dim]
+    query_rope, key_rope = apply_rotary_emb_meta(query.transpose(1, 2), key.transpose(1,2), freqs_cis)  # 对 query,key应用rope,因为它们要进行内积
+
+    # query_rope:[batch_size, seq_len, num_head, head_dim]
+    # =>[batch_size, num_head, seq_len, head_dim]
+    query_rope = query_rope.transpose(1,2)
+    key_rope = key_rope.transpose(1,2)
+
+    # query:[batch_size, num_head, seq_len, seq_len]
+    qk_dot = torch.matmul(query_rope, key_rope.transpose(2,3))
+    meta_qk_dot = qk_dot.detach() # 或者clone()
+    print(query_rope.shape)
+    print(key_rope.shape)
+    print(qk_dot.shape)
+    print("q[0][0]:\n", query_rope[0][0])
+    print("k[0][0]:\n", key_rope[0][0])
+    print("qk_dot[0]:\n", qk_dot[0])
+
+    """
+    最后，他们的qk内积相同,如下
+    """
+    # torch.allclose()函数参数rtol是相对误差容忍度，atol是绝对误差容忍度。调整这两个参数可以根据需要控制比较的严格程度。
+    print(torch.allclose(my_qk_dot, meta_qk_dot, rtol=1e-5, atol=1e-8))
+    # 但发现二者确实不相等,按道理说这样应该有问题
+    print(torch.allclose(hf_qk_dot, meta_qk_dot, rtol=1e-5, atol=1e-8)) # False
+
+
+if __name__ == "__main__":
+    #test_my_rope()
+    test_hf_and_meta_rope()
