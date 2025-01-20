@@ -45,6 +45,20 @@ def test_ds():
     dataset2 = Dataset.from_pandas(df)
     print(dataset2)  # 查看数据的结构
 
+def test_ds2():
+    import numpy as np
+    from datasets import Dataset
+
+    seq_len, dataset_size = 512, 512
+    dummy_data = {
+        "input_ids": np.random.randint(100, 30000, (dataset_size, seq_len)),
+        "labels": np.random.randint(0, 1, (dataset_size)),
+    }
+    ds = Dataset.from_dict(dummy_data)
+    ds.set_format("pt")
+    print('\n')
+    print("pandas data:",ds[:3])
+
 def test_init_empty():
     import torch.nn as nn
     from accelerate import init_empty_weights
@@ -57,4 +71,5 @@ def test_init_empty():
 
 if __name__ == "__main__":
     test_ds()
+    test_ds2()
     #test_init_empty()
