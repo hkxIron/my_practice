@@ -2,6 +2,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset, Dataset, IterableDataset, interleave_datasets
 from datasets.formatting.formatting import LazyRow
 import pandas as pd
+import sys
 
 def add_sum_col(row:LazyRow):
     row["sum"] = row["a"]+row["b"]
@@ -70,6 +71,8 @@ def test_init_empty():
     """
 
 if __name__ == "__main__":
+    print("sys args:")
+    print(sys.argv)
     test_ds()
     test_ds2()
     #test_init_empty()
