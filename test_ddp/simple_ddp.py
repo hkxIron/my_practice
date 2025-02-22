@@ -24,6 +24,7 @@ def example(rank:int, world_size:int):
   loss_fn(outputs, labels).backward()
   # update parameters
   optimizer.step()
+  print("训练结束")
 
 def main():
   world_size = 2

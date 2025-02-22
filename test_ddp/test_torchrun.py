@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 
 # 实现分布式数据并行的核心类
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel
 
 # DDP 在每个 GPU 上运行一个进程，其中都有一套完全相同的 Trainer 副本（包括model和optimizer）
 # 各个进程之间通过一个进程池进行通信，这两个方法来初始化和销毁进程池
@@ -50,16 +50,16 @@ def ddp_setup():
     # torchrun 会处理环境变量以及 rank & world_size 设置
     os.environ["MASTER_ADDR"] = "localhost"  # 由于这里是单机实验所以直接写 localhost
     os.environ["MASTER_PORT"] = "12350"  # 任意空闲端口
-    #init_process_group(backend="nccl")
-    init_process_group(backend="gloo", init_method='env://')
+    init_process_group(backend="nccl", init_method="env://")
     torch.cuda.set_device(int(os.environ['LOCAL_RANK']))
+    #init_process_group(backend="gloo", init_method='env://')
 
 """
  使用 DistributedDataParallel 进行单机多卡训练的基础上，使用 torchrun 进行容错处理，增强程序稳定性
  torchrun 允许我们在训练过程中按一定保存 snapshots，其中应当包含当前 epoch、模型参数（ckpt）、优化器参数、lr调度器参数等恢复训练所需的全部参数
  一旦程序出错退出，torchrun 会自动从最近 snapshots 重启所有进程
  除了增强稳定性外，torchrun 还会自动完成所有环境变量设置和进程分配工作，
- 所以不再需要手动设置 rank 或用 mp.spawn 生成并分配进程
+ 所以不再需要手动设置 local_rank 或用 mp.spawn 生成并分配进程
 """
 class Trainer:
     def __init__(
@@ -70,8 +70,8 @@ class Trainer:
             save_every: int,
             snapshot_path: str,  # 保存 snapshots 的位置
     ) -> None:
-        self.gpu_id = int(os.environ['LOCAL_RANK'])  # torchrun 会自动设置这个环境变量指出当前进程的 rank
-        self.model = model.to(self.gpu_id)
+        self.gpu_id = int(os.environ['LOCAL_RANK'])  # torchrun 会自动设置这个环境变量指出当前进程的 rank, 即LOCAL_RANK
+        self.origin_model = model.to(self.gpu_id)
         self.train_data = train_data
         self.optimizer = optimizer
         self.save_every = save_every  # 指定保存 snapshots 的周期
@@ -84,40 +84,41 @@ class Trainer:
             self._load_snapshot(snapshot_path)
 
         # torchrun中冉要将模型用DDP包装一下
-        self.model = DDP(self.model, device_ids=[self.gpu_id])  # model 要用 DDP 包装一下
+        self.parallel_model = DistributedDataParallel(self.origin_model, device_ids=[self.gpu_id])  # model 要用 DDP 包装一下
 
-    def _load_snapshot(self, snapshot_path):
+    def _load_snapshot(self, snapshot_path:str):
         ''' 加载 snapshot 并重启训练 '''
         loc = f"cuda:{self.gpu_id}"
         snapshot = torch.load(snapshot_path, map_location=loc)
-        self.model.load_state_dict(snapshot["MODEL_STATE"])
+        self.origin_model.load_state_dict(snapshot["MODEL_STATE"])
         self.epochs_run = snapshot["EPOCHS_RUN"]
         print(f"Resuming training from snapshot at Epoch {self.epochs_run}")
 
     def _run_batch(self, source, targets):
         self.optimizer.zero_grad()
-        output = self.model(source)
+        output = self.parallel_model(source)
         loss = F.cross_entropy(output, targets)
         loss.backward()
         self.optimizer.step()
 
-    def _run_epoch(self, epoch):
+    def _run_epoch(self, epoch:int):
         batch_size = len(next(iter(self.train_data))[0])
         if self.gpu_id == 0:
             print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {batch_size} | Steps: {len(self.train_data)}")
+
         self.train_data.sampler.set_epoch(epoch)
         for source, targets in self.train_data:
             source = source.to(self.gpu_id)
             targets = targets.to(self.gpu_id)
             self._run_batch(source, targets)
 
-    def _save_snapshot(self, epoch):
+    def _save_snapshot(self, epoch:int):
         # 在 snapshot 中保存恢复训练所必须的参数
-        snapshot = {
-            "MODEL_STATE": self.model.module.state_dict(),  # 由于多了一层 DDP 包装，通过 .module 获取原始参数
+        snapshot_dict = {
+            "MODEL_STATE": self.parallel_model.module.state_dict(),  # 由于多了一层 DDP 包装，通过 .module 获取原始参数
             "EPOCHS_RUN": epoch,
         }
-        torch.save(snapshot, self.snapshot_path)
+        torch.save(snapshot_dict, self.snapshot_path)
         print(f"Epoch {epoch} | Training snapshot saved at {self.snapshot_path}")
 
     def train(self, max_epochs: int):
@@ -137,14 +138,14 @@ class MyTrainDataset(Dataset):
     def __len__(self):
         return self.size
 
-    def __getitem__(self, index):
+    def __getitem__(self, index:int):
         return self.data[index]
 
 class MyModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.layers = torch.nn.ModuleList([torch.nn.Linear(20, 40),
-                                           torch.nn.Linear(40, 1)])
+                                                   torch.nn.Linear(40, 1)])
 
     def forward(self, x):
         for layer in self.layers:
@@ -152,7 +153,7 @@ class MyModel(torch.nn.Module):
         return x
 
 def load_train_objs():
-    train_set = MyTrainDataset(2048)  # load your dataset
+    train_set = MyTrainDataset(2048*100)  # load your dataset
     model = MyModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     return train_set, model, optimizer
@@ -182,9 +183,9 @@ def main(save_every: int, total_epochs: int, batch_size: int, snapshot_path: str
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='simple distributed training job with torchrun')
-    parser.add_argument('--total-epochs', type=int, default=50, help='Total epochs to train the model')
-    parser.add_argument('--save-every', type=int, default=10, help='How often to save a snapshot')
-    parser.add_argument('--batch_size', default=32, type=int, help='Input batch size on each device (default: 32)')
+    parser.add_argument('--total-epochs', type=int, default=1000, help='Total epochs to train the model')
+    parser.add_argument('--save-every', type=int, default=100, help='How often to save a snapshot')
+    parser.add_argument('--batch_size', default=40, type=int, help='Input batch size on each device (default: 32)')
     args = parser.parse_args()
 
     print(f"args:{args}")

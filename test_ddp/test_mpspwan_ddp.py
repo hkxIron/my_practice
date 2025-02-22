@@ -11,7 +11,7 @@ import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 
 # 实现分布式数据并行的核心类
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel
 
 # DDP 在每个 GPU 上运行一个进程，其中都有一套完全相同的 Trainer 副本（包括model和optimizer）
 # 各个进程之间通过一个进程池进行通信，这两个方法来初始化和销毁进程池
@@ -45,7 +45,7 @@ group_name（可选参数）：指定用于连接的进程组名称。
 原文链接：https://blog.csdn.net/Komach/article/details/130765773
 """
 
-def ddp_setup(rank:int, world_size:int):
+def ddp_setup(local_rank:int, world_size:int):
     """
     setup the distribution process group
 
@@ -57,12 +57,12 @@ def ddp_setup(rank:int, world_size:int):
     os.environ["MASTER_ADDR"] = "localhost"  # 由于这里是单机实验所以直接写 localhost
     os.environ["MASTER_PORT"] = "12355"  # 任意空闲端口
     init_process_group(
-        #backend="nccl",  # Nvidia CUDA CPU 用这个 "nccl", gloo, mpi
-        backend="tcp",  #
-        rank=rank,
+        backend="nccl",  # Nvidia CUDA CPU 用这个 "nccl", gloo, mpi
+        #backend="tcp",  #
+        rank=local_rank,
         world_size=world_size
     )
-    torch.cuda.set_device(rank)
+    torch.cuda.set_device(local_rank)
 
 
 class Trainer:
@@ -79,7 +79,7 @@ class Trainer:
         self.train_data = train_data
         self.optimizer = optimizer
         self.save_every = save_every  # 指定保存 ckpt 的周期
-        self.model = DDP(model, device_ids=[gpu_id])  # model 要用 DDP 包装一下
+        self.model = DistributedDataParallel(model, device_ids=[gpu_id])  # model 要用 DDP 包装一下
 
     def _run_batch(self, source, targets):
         self.optimizer.zero_grad()
@@ -89,6 +89,7 @@ class Trainer:
         self.optimizer.step()
 
     def _run_epoch(self, epoch:int):
+        print(f"rank:{self.gpu_id} epoch:{epoch} ...")
         batch_size = len(next(iter(self.train_data))[0])
         # 在各个 epoch 入口调用 DistributedSampler 的 set_epoch 方法是很重要的，这样才能打乱每个 epoch 的样本顺序
         self.train_data.sampler.set_epoch(epoch)
@@ -102,17 +103,18 @@ class Trainer:
             self._run_batch(source, targets)
 
     def _save_checkpoint(self, epoch:int):
+        # model为DistributeDataParallel, 需要通过.model获取原始的model参数
         ckp = self.model.module.state_dict()  # 由于多了一层 DDP 包装，通过 .module 获取原始参数
-        PATH = "checkpoint.pt"
-        torch.save(ckp, PATH)
-        print(f"Epoch {epoch} | Training checkpoint saved at {PATH}")
+        path = "checkpoint.pt"
+        torch.save(ckp, path)
+        print(f"Epoch {epoch} | Training checkpoint saved at {path}")
 
     def train(self, max_epochs: int):
         print(f"rank:{self.gpu_id} begin to train ...")
         for epoch in range(max_epochs):
             self._run_epoch(epoch)
             # 各个 GPU 上都在跑一样的训练进程，这里指定 rank0 进程保存 ckpt 以免重复保存
-            if self.gpu_id == 0 and epoch % self.save_every == 0:
+            if self.gpu_id == 0 and epoch % self.save_every == 0: # 只有主进程才会保存model
                 self._save_checkpoint(epoch)
 
 
@@ -137,7 +139,6 @@ class MyModel(torch.nn.Module):
             x = layer(x)
         return x
 
-
 def load_train_objs():
     train_set = MyTrainDataset(2048)  # load your dataset
     model = MyModel()
@@ -157,24 +158,23 @@ def prepare_dataloader(dataset: Dataset, batch_size: int):
         sampler=sampler
     )
 
-
-def main(rank: int, world_size: int, save_every: int, total_epochs: int, batch_size: int):
+# local_rank:为mp.spwan自动分配的rank
+def main(local_rank: int, world_size: int, save_every: int, total_epochs: int, batch_size: int):
     # 初始化进程池
-    ddp_setup(rank, world_size)
+    ddp_setup(local_rank, world_size)
 
-    is_master = rank==0
+    is_master = local_rank==0
     # 进行训练
     dataset, model, optimizer = load_train_objs()
-    train_data = prepare_dataloader(dataset, batch_size)
+    train_data = prepare_dataloader(dataset, batch_size) # 与accelerater差不多
     if is_master:
         print(f"model:{model}")
         print(f"param size:{sum([p.numel() for p in model.parameters() if p.requires_grad])}")
-    trainer = Trainer(model, train_data, optimizer, rank, save_every)
+    trainer = Trainer(model, train_data, optimizer, local_rank, save_every)
     trainer.train(total_epochs)
 
-    # 销毁进程池
+    # 销毁各个gpu的进程池
     destroy_process_group()
-
 
 if __name__ == "__main__":
     import argparse
@@ -187,6 +187,7 @@ if __name__ == "__main__":
 
     # 一般为GPU的个数
     world_size = torch.cuda.device_count()
+    #print(f"os env:{os.environ['CUDA_VISIBLE_DEVICES']}")
     print(f"args:{args}")
     print(f"world_size:{world_size}")
 
