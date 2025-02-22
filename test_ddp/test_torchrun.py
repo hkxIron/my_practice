@@ -78,6 +78,8 @@ class Trainer:
         self.epochs_run = 0  # 存储将要保存在 snapshots 中的 epoch num 信息
         self.snapshot_path = snapshot_path
 
+        print(f"env:{os.environ}")
+
         # 若存在 snapshots 则加载，这样重复运行指令就能自动继续训练了
         if os.path.exists(snapshot_path):
             print('loading snapshot')
@@ -104,7 +106,7 @@ class Trainer:
     def _run_epoch(self, epoch:int):
         batch_size = len(next(iter(self.train_data))[0])
         if self.gpu_id == 0:
-            print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {batch_size} | Steps: {len(self.train_data)}")
+            print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {batch_size} | Total Steps: {len(self.train_data)}")
 
         self.train_data.sampler.set_epoch(epoch)
         for source, targets in self.train_data:
@@ -153,7 +155,7 @@ class MyModel(torch.nn.Module):
         return x
 
 def load_train_objs():
-    train_set = MyTrainDataset(2048*100)  # load your dataset
+    train_set = MyTrainDataset(2048)  # load your dataset
     model = MyModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     return train_set, model, optimizer
@@ -202,7 +204,7 @@ if __name__ == "__main__":
         --nproc_per_node=ngpu 代表使用所有可用GPU, 等于号后也可写gpu数量n, 这样会使用前n个GPU
     
     运行后获取参数：
-        os.environ['RANK']          得到在所有机器所有进程中当前GPU的rank
+        os.environ['RANK']          得到在所有机器所有进程中当前GPU的rank, 即global_rank
         os.environ['LOCAL_RANK']    得到在当前node中当前GPU的rank
         os.environ['WORLD_SIZE']    得到GPU的数量
     
