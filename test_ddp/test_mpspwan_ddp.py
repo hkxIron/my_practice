@@ -57,8 +57,8 @@ def ddp_setup(rank:int, world_size:int):
     os.environ["MASTER_ADDR"] = "localhost"  # 由于这里是单机实验所以直接写 localhost
     os.environ["MASTER_PORT"] = "12355"  # 任意空闲端口
     init_process_group(
-        backend="nccl",  # Nvidia CUDA CPU 用这个 "nccl", gloo, mpi
-        #backend="tcp",  #
+        #backend="nccl",  # Nvidia CUDA CPU 用这个 "nccl", gloo, mpi
+        backend="tcp",  #
         rank=rank,
         world_size=world_size
     )
