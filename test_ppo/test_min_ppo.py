@@ -4,6 +4,9 @@ import torch.optim as optim
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import random
 
+"""
+注意：下述rlhf ppo代码有问题，不建议学习
+"""
 ##############################
 # 1. 定义四个网络
 ##############################
@@ -22,7 +25,6 @@ text_generator = TextGenerationPipeline(model, tokenizer)
 text_generator("这是很久之前的事情了", max_length=100, do_sample=True)
     [{'generated_text': '这是很久之前的事情了 。 我 现 在 想 起 来 就 让 自 己 很 伤 心 ， 很 失 望 。 我 现 在 想 到 ， 我 觉 得 大 多 数 人 的 生 活 比 我 的 生 命 还 要 重 要 ， 对 一 些 事 情 的 看 法 ， 对 一 些 人 的 看 法 ， 都 是 在 发 泄 。 但 是 ， 我 们 的 生 活 是 需 要 一 个 信 用 体 系 的 。 我 不 知'}]
     
-注意：下述rlhf ppo代码有问题，不建议学习
 """
 # 使用一个小型开源中文 LLM
 policy_model_name = "../../../hf_data_and_model/models/uer/gpt2-chinese-cluecorpussmall"

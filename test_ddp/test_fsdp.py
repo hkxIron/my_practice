@@ -20,7 +20,6 @@ from torch.distributed.fsdp import (
 FullyShardedDataParallel,
 CPUOffload,
 )
-#from torch.distributed.fsdp import (default_auto_wrap_policy,)
 import torch.nn as nn
 
 class MyModel(nn.Module):
@@ -49,7 +48,7 @@ class MyTrainDataset(Dataset):
 
 # 初始化分布式环境
 def setup_distributed():
-    init_process_group(backend="nccl")  # 使用 NCCL 后端（适用于 GPU）
+    init_process_group(backend="nccl", init_method="env://")  # 使用 NCCL 后端（适用于 GPU）
     torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
 def train(save_every: int, total_epochs: int, batch_size: int):

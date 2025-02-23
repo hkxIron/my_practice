@@ -5,6 +5,7 @@ import torch.multiprocessing as mp
 from typing import *
 
 """
+blog:https://zhuanlan.zhihu.com/p/607605729
 backend:nccl,mpi,gloo,ucc
 """
 def init_process(rank:int, size:int, fn:Callable, backend='gloo'):
