@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import math
 import os, sys
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, List
@@ -100,6 +101,7 @@ BatchEncoding(
 #     # collator:也可以完全自己计算，不需要使用tokenizer.pad函数
 #     return collator_data
 
+ignore_label = -100
 class SFTDataset:
     """Dataset for supervised fine-tuning.
     注意，并不是hf的Dataset
@@ -113,6 +115,7 @@ class SFTDataset:
     ):
 
         df = pd.read_json(data_path, lines=True)
+        #df = df.head(2)
         if hint:
             print(f"data columns:{list(df.columns)}")
             print(f"data len:{df.shape[0]}")
@@ -120,24 +123,25 @@ class SFTDataset:
 
         self.tokenizer = tokenizer
         self.model_max_length = max_seq_length
-        self.ignore_index = -100
         # 构建hf dataset数据集
-        self.dataset = datasets.Dataset.from_pandas(df)\
-            .map(self.convert_tokens_to_ids, remove_columns=["prompt", "input", "output"])
+        sft_dataset = datasets.Dataset.from_pandas(df).map(self.convert_tokens_to_ids).filter(lambda x:len(x["input_ids"])>0)
+
         if hint:
-            print(f"head data:{self.dataset[0:2]=}")
-        self.dataset = self.dataset.map(remove_columns=["in_text", "out_text"])
+            print(f"head data:{sft_dataset[0:2]=}")
+            print(f"valid data size:{len(sft_dataset)}")
+
+        self.dataset = sft_dataset.map(remove_columns=["prompt", "input", "output", "in_text", "out_text"])
         if hint:
             print(f"head data:{self.dataset[0:2]=}")
             print(f"dataset:{data_path} build done!")
     
     def convert_tokens_to_ids(self, example:Dict[str, str]):
         #input_ids = [self.tokenizer.bos_token_id]
-        #label_ids = [self.ignore_index]
+        #label_ids = [ignore_index]
         
-        prompt_text = example['prompt']
-        input_text = example['input']
-        output_text = example['output']
+        prompt_text = example['prompt'].strip()
+        input_text = example['input'].strip() # 防止token merge
+        output_text = example['output'].strip()
 
         # prompt部分不需要计算loss,因此使用ignore_index=-100 
         # 注意：
@@ -146,15 +150,27 @@ class SFTDataset:
         prompt_input_ids = self.tokenizer.encode(prompt_text+input_text, add_special_tokens=False)
         eos_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token)
         input_ids = prompt_input_ids 
-        label_ids = [self.ignore_index] * len(input_ids)
+        label_ids = [ignore_label] * len(input_ids)
         
-        output_ids = self.tokenizer.encode(output_text, add_special_tokens=False)
-        output_ids+=[eos_id]
+        output_ids = self.tokenizer.encode(output_text, add_special_tokens=False) + [eos_id]
         input_ids+=output_ids
 
-        # 有个疑问是：如果在llm sft中，恰好input_text的最后一个token与output_text中第一个token可以组成一个新的token,
+        # 有个疑问是：如果在llm sft中，恰好input_text的最后一个token与output_text中第一个token可以组成一个新的token,如input_text最后一个token为"你"，output第一个token为“好”，
+        # 两个文本拼接在一起时"你好"恰好也为一个新的token，但整体上token数变少了，
         # 那么len(tokenizer(input_text+output_text))<len(tokenizer(input_text))+len(tokenizer(output_text))了，就会产生id的错位，label_id也会错位，
-        # 应该如何解决呢？
+        all_text_encode_once = self.tokenizer.encode(prompt_text+input_text+output_text, add_special_tokens=False) + [eos_id]
+        if len(all_text_encode_once) != len(input_ids):
+            print(f"some token is merged in encode once, please check last token of input_text, {len(all_text_encode_once)=} != {len(input_ids)=}, first token of output_text, {input_text=} {output_text=}")
+            show_diff_ids(all_text_encode_once, input_ids, self.tokenizer, ids_left_name="once_enc", ids_right_name="add_enc")
+            # 不能返回None, None在dataset中不可遍历, 'NoneType' object is not subscriptable, 要求返回的key也必须与正常的相同
+            return {
+                "in_text": "",
+                "out_text": "",
+                "input_ids": [],
+                "labels": [],
+                "attention_mask":[]
+            }
+
         # output需要计算loss, 使用原始的token_id
         label_ids+=output_ids
 
@@ -189,7 +205,7 @@ def my_batch_padding_collator(examples: List[Dict[str, Any]], tokenizer, padding
     for example in examples:
         for key, value in example.items():
             if key == "labels":
-                pad_id = -100
+                pad_id = ignore_label
             elif key.startswith("attention"):
                 pad_id = 0
             else:  # input token ids
@@ -220,7 +236,13 @@ def load_model_and_tokenizer(
 ):
     """load model and tokenizer"""
     # minicpm3用的是llamaTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, 
+                                              trust_remote_code=True, 
+                                              # 非常重要！！！关闭前缀空格, 否则会在句子前添加'_', 导致在output_text前面多了一个空格， 
+                                              # 即tokenizer(input_text + output_text)!=tokenizer(input_text)+tokenizer(output_text)
+                                              add_prefix_space=False,  
+                                              #add_special_tokens=False
+                                              )
     #tokenizer = LlamaTokenizer.from_pretrained(model_path, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -276,6 +298,38 @@ def load_model_and_tokenizer(
 
     return model, tokenizer
 
+"""
+1. debug发现是拼接的多了空格token
+some token is merged in encode once, please check last token of input_text, len(all_text_encode_once)=140 != len(input_ids)=141, first token of output_text, 
+input_text='类型#裙*风格#简约*图案#条纹*图案#线条*图案#撞色*裙型#鱼尾裙*裙袖长#无袖' 
+output_text='圆形领口修饰脖颈线条，适合各种脸型，耐看有气质。无袖设计，尤显清凉，简约横条纹装饰，使得整身人鱼造型更为生动立体。加之撞色的鱼尾下摆，深邃富有诗意。收腰包臀,修饰女性身体曲线，结合别出心裁的鱼尾裙摆设计，勾勒出自然流畅的身体轮廓，展现了婀娜多姿的迷人姿态。'
+once_enc:
+[(60312, '鱼'), (60715, '尾'), (61811, '裙'), (59379, '*'), (61811, '裙'), (61525, '袖'), (59503, '长'), (59377, '#'), (59569, '无'), (61525, '袖'), (-1, '===='), (17132, '圆形'), (59928, '领'), (59718, '口'), (42784, '修饰'), (62593, '脖'), (61379, '颈'), (29900, '线条'), (65, '，'), (5982, '适合'), (4023, '各种')]
+add_enc:
+[(60312, '鱼'), (60715, '尾'), (61811, '裙'), (59379, '*'), (61811, '裙'), (61525, '袖'), (59503, '长'), (59377, '#'), (59569, '无'), (61525, '袖'), (-1, '===='), (59320, '▁'), (17132, '圆形'), (59928, '领'), (59718, '口'), (42784, '修饰'), (62593, '脖'), (61379, '颈'), (29900, '线条'), (65, '，'), (5982, '适合')]
+
+2. 也有的是因为tokenizer在有无前文时，部分分词不一样，如下
+some token is merged in encode once, please check last token of input_text, len(all_text_encode_once)=100 != len(input_ids)=101, first token of output_text, input_text='类型#上衣*材质#针织*颜色#粉色*风格#文艺*风格#清新*衣样式#外套*衣领型#v领*衣门襟#系带' output_text='有美式独家风的一款小外套，春秋季节作为防晒服小巧可爱。细腻的针织材质柔软舒适，搭配上裸粉色更显清新文艺。大大的v领加上合身的版型自由舒适，前面的系带增加立体感和层次感。'
+once_enc:
+[(59683, '型'), (59377, '#'), (59343, 'v'), (59928, '领'), (59379, '*'), (60320, '衣'), (59752, '门'), (62806, '襟'), (59377, '#'), (59574, '系'), (-1, '===='), (19313, '带有'), (59639, '美'), (59585, '式'), (35209, '独家'), (59722, '风'), (26010, '的一款'), (59472, '小'), (44895, '外套'), (65, '，'), (27307, '春秋')]
+add_enc:
+[(59683, '型'), (59377, '#'), (59343, 'v'), (59928, '领'), (59379, '*'), (60320, '衣'), (59752, '门'), (62806, '襟'), (59377, '#'), (59574, '系'), (-1, '===='), (59822, '带'), (59395, '有'), (59639, '美'), (59585, '式'), (35209, '独家'), (59722, '风'), (26010, '的一款'), (59472, '小'), (44895, '外套'), (65, '，')]
+"""
+def show_diff_ids(ids_left:List[int], ids_right:List[int], tokenizer, ids_left_name='left', ids_right_name='right'):
+    pre_n = 10
+    post_n = 10
+    for (ind,(a, b)) in enumerate(zip(ids_left, ids_right)):
+        if a!=b:
+            pre_ids = ids_left[max(ind-pre_n,0):ind]
+            post_ids1 = ids_left[ind: min(ind+post_n,len(ids_left))]
+            post_ids2 = ids_right[ind: min(ind+post_n,len(ids_right))]
+            print(f"{ids_left_name}:\n{[(i, tokenizer.convert_ids_to_tokens(i) if i>=0 else '====') for i in pre_ids+[-1]+post_ids1]}")
+            print(f"{ids_right_name}:\n{[(i, tokenizer.convert_ids_to_tokens(i)if i>=0 else '====') for i in pre_ids+[-1]+post_ids2]}")
+            break
+
+def get_id_token_zip_list(id_list:List[int]):
+    return [f"{i}:{tokenizer.convert_ids_to_tokens(i)}" for i in id_list]
+
 def show_some_data(dataset:Dataset, collate_fn: Callable, batch_size=2):
     # 打印点数据看下
     dataloader = DataLoader(dataset=dataset, shuffle=False, batch_size=batch_size, collate_fn=collate_fn)
@@ -321,7 +375,6 @@ if __name__ == "__main__":
         hint=True
     )
     my_data_collator=lambda x: my_batch_padding_collator(x, tokenizer, max_seq_len=max_seq_len)
-
 
     eval_dataset = SFTDataset(
         data_path=data_args.eval_data_path,

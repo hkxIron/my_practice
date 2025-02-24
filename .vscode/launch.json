@@ -1,0 +1,50 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "调试hf_datasets",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "dataset/test_hf_datasets.py", // 相对于在整个工程上的目录，因此需要指定子目录
+            "console": "integratedTerminal",
+            "args": [
+            ]
+        },
+        {
+            "name": "调试hkx_minicpm3_sft.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "test_sft/hkx_minicpm3_sft.py", // 相对于在整个工程上的目录，因此需要指定子目录
+            "console": "integratedTerminal",
+            "args": [
+                "--model_name_or_path", "/home/hkx/data/work/hf_data_and_model/models/openbmb/MiniCPM3-4B",
+                "--report_to", "none",
+                "--output_dir", "test_sft/output/AdvertiseGenSFT/202502231835/",
+                "--train_data_path", "test_sft/data/AdvertiseGenChatML/train.jsonl",
+                "--eval_data_path", "test_sft/data/AdvertiseGenChatML/dev.jsonl",
+                "--learning_rate", "5e-5",
+                "--per_device_train_batch_size", "2",
+                "--per_device_eval_batch_size", "1",
+                "--bf16",
+                "--gradient_accumulation_steps", "2",
+                "--warmup_steps", "100",
+                "--max_steps", "3000",
+                "--weight_decay", "0.01",
+                "--evaluation_strategy", "steps",
+                "--eval_steps", "100",
+                "--save_strategy", "steps",
+                "--save_steps", "500",
+                "--seed", "42",
+                "--log_level", "info",
+                "--logging_strategy", "steps",
+                "--logging_steps", "10"
+            ],
+            "env": {
+                "use_lora": "0",
+            },
+        }
+    ]
+}
