@@ -58,12 +58,12 @@ test_sft/hkx_minicpm3_sft.py \
 --train_data_path test_sft/data/AdvertiseGenChatML/train.jsonl \
 --eval_data_path test_sft/data/AdvertiseGenChatML/dev.jsonl \
 --learning_rate 5e-5 \
---per_device_train_batch_size 2 \
---per_device_eval_batch_size 1 \
+--per_device_train_batch_size 4 \
+--per_device_eval_batch_size 2 \
 --bf16 \
 --gradient_accumulation_steps 2 \
 --warmup_steps 100 \
---max_steps 3000 \
+--max_steps 2000 \
 --weight_decay 0.01 \
 --evaluation_strategy steps \
 --eval_steps 100 \
