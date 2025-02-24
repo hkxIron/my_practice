@@ -28,6 +28,7 @@ from transformers.utils import PaddingStrategy
 def show_paths():
     print("cur work path:", os.getcwd())
     print("sys path", sys.path)
+    print(f"{os.environ=}")
 
 @dataclass
 class ModelArguments:

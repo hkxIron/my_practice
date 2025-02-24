@@ -9,3 +9,4 @@ rsync -av -e ssh --exclude='*.git'  \
 --exclude='__pycache__/' \
 --exclude='*.pdf' \
 --exclude='wandb/' ${user_ip}:${remote_project_path} $local_project_path
+echo "=======================复制数据结束======================"

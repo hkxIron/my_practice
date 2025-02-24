@@ -24,9 +24,17 @@ if [ ! -d logs/ ]; then
     mkdir logs/
 fi
 
-port=29501
+
+wandb_key="bdfc8b674cd322f967699975e89d431e82fcd317" # hkx wandb
+port=$(python ../utils/get_free_port.py)
+echo "port:$port"
+#torchrun --rdzv-endpoint=localhost:${port} \
+#export MASTER_PORT=${port} && \
+
+#port=29501
+
 set -x
-nohup docker run -i --rm --gpus '"device='${device_list}'"' --name test_minicpm3_sft --network=host --shm-size=16gb \
+nohup docker run -i --rm --gpus '"device='${device_list}'"'  --name test_minicpm3_sft --network=host --shm-size=16gb \
     -v /etc/localtime:/etc/localtime:ro \
     -v ${project_path}:/docker_workspace \
     -v ${model_path}:/docker_model_input_path \
@@ -35,9 +43,14 @@ nohup docker run -i --rm --gpus '"device='${device_list}'"' --name test_minicpm3
     ${image} \
     bash -c "\
 export PYTHONPATH=/docker_workspace && \
-export MASTER_PORT=${port} && \
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64 && \
-deepspeed test_sft/hkx_minicpm3_sft.py \
+export WANDB_DISABLED=false && \
+export WANDB_PROJECT=simple_ddp && \
+export WANDB_API_KEY=${wandb_key} && \
+wandb login ${wandb_key} && \
+deepspeed \
+--master_port=${port} \
+test_sft/hkx_minicpm3_sft.py \
 --deepspeed test_sft/deepspeed_bf16_zero2.json \
 --model_name_or_path /docker_model_input_path \
 --report_to wandb \
@@ -45,7 +58,7 @@ deepspeed test_sft/hkx_minicpm3_sft.py \
 --train_data_path test_sft/data/AdvertiseGenChatML/train.jsonl \
 --eval_data_path test_sft/data/AdvertiseGenChatML/dev.jsonl \
 --learning_rate 5e-5 \
---per_device_train_batch_size 2 \
+--per_device_train_batch_size 10 \
 --per_device_eval_batch_size 1 \
 --bf16 \
 --gradient_accumulation_steps 2 \
