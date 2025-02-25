@@ -8,7 +8,7 @@ import pandas as pd
 from torch.utils.data import DataLoader
 import datasets
 from datasets import load_dataset, Dataset, IterableDataset
-
+import wandb
 import torch
 
 print("sys path", sys.path)
@@ -25,6 +25,40 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer, Trainer,
                           default_data_collator)
 from models.minicpm.modeling_minicpm import MiniCPM3ForCausalLM
 from transformers.utils import PaddingStrategy
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    DataCollatorForSeq2Seq,
+    TrainingArguments,
+    Trainer
+)
+from peft import (
+    LoraConfig,
+    TaskType,
+    get_peft_model,
+    get_peft_model_state_dict,
+    set_peft_model_state_dict
+)
+import logging
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging.INFO
+)
+
+logger = logging.getLogger(name=__name__)
+
+def set_random_seed(seed):
+    import random
+    import numpy as np
+    if seed is not None and seed > 0:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.random.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
 
 def show_paths():
     print("cur work path:", os.getcwd())
@@ -46,6 +80,7 @@ class DataArguments:
         default="data/AdvertiseGenChatML/dev.json",
         metadata={"help": "Path to the test data."},
     )
+    use_my_collator: bool = field(default=True, metadata={"help":"使用自己实现的collator."})
 
 
 @dataclass
@@ -60,6 +95,7 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     use_lora: bool = field(default=False)
     qlora: bool = field(default=False)
+    trainable_lora_layers:str = field(default="q_proj,v_proj")
 
 """
 将多个input dict组成的list转换成一个dict,其中key不变，但value是多个原始数据组成的数组
@@ -253,6 +289,7 @@ def load_model_and_tokenizer(
         dtype = torch.float16
     else:
         dtype = torch.float32
+
     if use_lora and qlora:
         assert use_lora, "use_lora must be True when use_qlora is True"
         quantization_config = BitsAndBytesConfig(
@@ -264,7 +301,7 @@ def load_model_and_tokenizer(
             bnb_4bit_use_double_quant=True,  # 是否采用双量化，即对zeropoint和scaling参数进行量化
             llm_int8_enable_fp32_cpu_offload=False,  # 是否llm使用int8，cpu上保存的参数使用fp32
             llm_int8_has_fp16_weight=False,  # 是否启用混合精度
-            #llm_int8_skip_modules=["out_proj", "kv_proj", "lm_head"],  # 不进行量化的模块
+            llm_int8_skip_modules=["out_proj", "kv_proj", "lm_head"],  # 不进行量化的模块
             llm_int8_threshold=6.0,  # llm.int8()算法中的离群值，根据这个值区分是否进行量化
         )
         model = MiniCPM3ForCausalLM.from_pretrained(
@@ -279,13 +316,14 @@ def load_model_and_tokenizer(
             torch_dtype=dtype,
             trust_remote_code=True,
         )
+
     if use_lora:
         from peft import LoraConfig, TaskType, get_peft_model
-
         lora_config = LoraConfig(
             init_lora_weights="gaussian",
             task_type=TaskType.CAUSAL_LM,
-            target_modules=["q_proj", "v_proj"],
+            #target_modules=["q_proj", "v_proj"],
+            target_modules=training_args.trainable_lora_layers.split(","),
             r=8,
             lora_alpha=32,
             lora_dropout=0.1,
@@ -295,6 +333,8 @@ def load_model_and_tokenizer(
         # trainable params: 2,949,120 || all params: 3,010,652,928 || trainable%: 0.09795616002669305
         model.print_trainable_parameters()
         # model.enable_input_require_grads()  # need when using adapter
+
+    model.config.use_cache= False
 
     return model, tokenizer
 
@@ -353,9 +393,22 @@ def show_some_data(dataset:Dataset, collate_fn: Callable, batch_size=2):
         print(f"idx:{idx} {sample['attention_mask'][idx].tolist()=}")
         print("="*50)
 
+def show_train_summary(result, max_length:int):
+    logger.info("Training Time: %.2f sec" % result.metrics["train_runtime"])
+    logger.info("Throughput: %.2f tokens / sec" % (result.metrics["train_samples_per_second"] * max_length))
+    print(torch.cuda.memory_summary())
+
+def write_wandb_log(output_dir):
+    wandb_run_id = ""
+    if os.environ.get("WANDB_DISABLED", "") == "false" and wandb.run:
+        wandb_run_id = wandb.run.id
+    with open(os.path.join(output_dir, "_SUCCESS"), "w") as f:
+        f.write(wandb_run_id)
 
 if __name__ == "__main__":
     show_paths()
+    set_random_seed(42)
+
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     model, tokenizer = load_model_and_tokenizer(
@@ -367,6 +420,9 @@ if __name__ == "__main__":
         fp16=training_args.fp16
     )
 
+    print(f"{model=}")
+    print(f"{tokenizer=}")
+
     max_seq_len = training_args.model_max_length
     train_dataset = SFTDataset(
         data_path=data_args.train_data_path,
@@ -374,7 +430,16 @@ if __name__ == "__main__":
         max_seq_length=max_seq_len,
         hint=True
     )
-    my_data_collator=lambda x: my_batch_padding_collator(x, tokenizer, max_seq_len=max_seq_len)
+
+    # collator: 可以用自己实现的，或者系统提供的
+    if data_args.use_my_collator:
+        print("使用自己实现有collator")
+        my_data_collator=lambda x: my_batch_padding_collator(x, tokenizer, max_seq_len=max_seq_len)
+    else:
+        print("使用DataCollatorForSeq2Seq")
+        # pad_to_multiple_of=8表示padding的长度是8的倍数
+        my_data_collator = DataCollatorForSeq2Seq(tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True)
+
 
     eval_dataset = SFTDataset(
         data_path=data_args.eval_data_path,
@@ -400,9 +465,20 @@ if __name__ == "__main__":
         checkpoint = training_args.resume_from_checkpoint
     elif last_checkpoint is not None:
         checkpoint = last_checkpoint
-    train_result = trainer.train(resume_from_checkpoint=checkpoint)
 
-    trainer.train()
+    if checkpoint:
+        print(f"resume from checkpoint:{checkpoint}")
+        train_result = trainer.train(resume_from_checkpoint=checkpoint)
+    else:
+        train_result = trainer.train()
+
     # save the incremental PEFT weights, more details can be found in https://huggingface.co/blog/peft
-    trainer.save_model()
-    print("train done!")
+    trainer.save_model(training_args.output_dir)
+    tokenizer.save_pretrained(training_args.output_dir)
+
+    # summary
+    if training_args.local_rank == 0:
+        show_train_summary(result=train_result, max_length=data_args.max_seq_length)
+        write_wandb_log(training_args.output_dir)
+
+        print("train done!")

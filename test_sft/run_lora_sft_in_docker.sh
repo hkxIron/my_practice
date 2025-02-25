@@ -8,7 +8,7 @@ time_str="$(date +%Y%m%d-%H-%M-%S)"
 root_path="$HOME/work"
 project_path="${root_path}/open/project/my_practice/"
 model_path="${root_path}/open/hf_data_and_model/models/openbmb/MiniCPM3-4B/"
-model_out_path="${root_path}/trained_models/MiniCPM3-4B_mysft/"
+model_out_path="${root_path}/trained_models/MiniCPM3-4B_mysft_lora/"
 
 # docker image
 img1="icr"
@@ -34,7 +34,7 @@ echo "port:$port"
 #port=29501
 
 set -x
-nohup docker run -i --rm --gpus '"device='${device_list}'"'  --name test_minicpm3_sft --network=host --shm-size=16gb \
+nohup docker run -i --rm --gpus '"device='${device_list}'"'  --name train_lora_minicpm3_sft --network=host --shm-size=16gb \
     -v /etc/localtime:/etc/localtime:ro \
     -v ${project_path}:/docker_workspace \
     -v ${model_path}:/docker_model_input_path \
@@ -63,7 +63,7 @@ test_sft/hkx_minicpm3_sft.py \
 --bf16 \
 --gradient_accumulation_steps 2 \
 --warmup_steps 100 \
---max_steps 2000 \
+--max_steps 1000 \
 --weight_decay 0.01 \
 --evaluation_strategy steps \
 --eval_steps 100 \
@@ -71,7 +71,11 @@ test_sft/hkx_minicpm3_sft.py \
 --save_steps 500 --seed 42 \
 --log_level info \
 --logging_strategy steps \
---logging_steps 10
+--logging_steps 10 \
+--use_my_collator true \
+--use_lora true \
+--trainable_lora_layers o_proj,up_proj,down_proj
+--qlora true
  " 2>&1 |tee logs/log_${time_str}.txt
 
 set +x
