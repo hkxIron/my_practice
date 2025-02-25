@@ -63,7 +63,7 @@ test_sft/hkx_minicpm3_sft.py \
 --bf16 \
 --gradient_accumulation_steps 2 \
 --warmup_steps 100 \
---max_steps 2000 \
+--max_steps 1500 \
 --weight_decay 0.01 \
 --evaluation_strategy steps \
 --eval_steps 100 \
