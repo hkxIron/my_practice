@@ -18,7 +18,7 @@ test_max_gpu_num(){
   nvidia-smi|grep "Processes:" -A14|grep "MiB"|awk -F' ' '{if(length($2)>0) {print $2} }'>tmp2.txt
   device_list=$(sort -n tmp1.txt tmp2.txt tmp2.txt|uniq -u|head -n $max_gpu_num|tr '\n' ','|sed 's/,$//');rm -f tmp1.txt tmp2.txt
   gpu_num=$(echo ${device_list}|awk -F',' '{print NF}')
-  echo "gpus:$device_list size:${gpu_num}"
+  echo "gpu ids:$device_list size:${gpu_num}"
   if [ -z "${device_list}" ];then
     echo "========================警告：没有可用gpu,退出======================="
     exit 100

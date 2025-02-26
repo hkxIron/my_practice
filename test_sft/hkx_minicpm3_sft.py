@@ -176,8 +176,11 @@ class SFTDataset:
         #label_ids = [ignore_index]
         
         prompt_text = example['prompt'].strip()
-        input_text = example['input'].strip() # 防止token merge
-        output_text = example['output'].strip()
+        input_text = example['input'].strip() 
+        # 防止token merge
+        # 1.去掉ouput_text前面的空白字符
+        # 2.前面加上"\n", 以防止token merge, 这样之后，就不会出现意外的token_merge
+        output_text = "\n"+example['output'].strip() 
 
         # prompt部分不需要计算loss,因此使用ignore_index=-100 
         # 注意：
@@ -194,6 +197,7 @@ class SFTDataset:
         # 有个疑问是：如果在llm sft中，恰好input_text的最后一个token与output_text中第一个token可以组成一个新的token,如input_text最后一个token为"你"，output第一个token为“好”，
         # 两个文本拼接在一起时"你好"恰好也为一个新的token，但整体上token数变少了，
         # 那么len(tokenizer(input_text+output_text))<len(tokenizer(input_text))+len(tokenizer(output_text))了，就会产生id的错位，label_id也会错位，
+        # 答案：见上面的token merge
         all_text_encode_once = self.tokenizer.encode(prompt_text+input_text+output_text, add_special_tokens=False) + [eos_id]
         if len(all_text_encode_once) != len(input_ids):
             print(f"some token is merged in encode once, please check last token of input_text, {len(all_text_encode_once)=} != {len(input_ids)=}, first token of output_text, {input_text=} {output_text=}")

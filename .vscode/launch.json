@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "调试llm_inference",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "test_vllm/test_vllm_inference.py", // 相对于在整个工程上的目录，因此需要指定子目录
+            "console": "integratedTerminal",
+            "args": [
+            ]
+        },
+        {
             "name": "调试hf_datasets",
             "type": "debugpy",
             "request": "launch",

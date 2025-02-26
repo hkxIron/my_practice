@@ -1,0 +1,1 @@
+bash scp.sh && bash run_vllm_inference_in_docker.sh
