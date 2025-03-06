@@ -277,7 +277,7 @@ def load_model_and_tokenizer(
     """load model and tokenizer"""
     # minicpm3用的是llamaTokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, 
-                                              trust_remote_code=True, 
+                                              #trust_remote_code=True, 
                                               # 非常重要！！！关闭前缀空格, 否则会在句子前添加'_', 导致在output_text前面多了一个空格， 
                                               # 即tokenizer(input_text + output_text)!=tokenizer(input_text)+tokenizer(output_text)
                                               add_prefix_space=False,  
@@ -311,14 +311,14 @@ def load_model_and_tokenizer(
         model = MiniCPM3ForCausalLM.from_pretrained(
             model_path,
             torch_dtype=dtype,
-            trust_remote_code=True,
+            #trust_remote_code=True,
             quantization_config=quantization_config, # 量化需要gpu支持才行
         )
     else:
         model = MiniCPM3ForCausalLM.from_pretrained(
             model_path,
             torch_dtype=dtype,
-            trust_remote_code=True,
+            #trust_remote_code=True,
         )
 
     if use_lora:
