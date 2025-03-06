@@ -7,7 +7,11 @@ time_str="$(date +%Y%m%d-%H-%M-%S)"
 
 root_path="$HOME/work"
 project_path="${root_path}/open/project/my_practice/"
-model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B/"
+
+#model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B/"
+#model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-7B/"
+model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B-Instruct/"
+#model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-7B-Instruct/"
 
 # docker image
 img1="icr"
@@ -18,8 +22,14 @@ img4='wsw/large-lm:1.0.15-4_vllm3' # 装了vllm的docker
 image="m${img1}.cloud${img2}ioff${img3}/${img4}"
 echo $image
 
-max_gpu_num=1 # 最大限制多少个gpu
-test_max_gpu_num $max_gpu_num
+auto_find_gpu=1
+if [ $auto_find_gpu -eq 1 ];then
+    max_gpu_num=1 # 最大限制多少个gpu
+    test_max_gpu_num $max_gpu_num
+else
+    device_list="2"
+fi
+# ---------------
 if [ ! -d logs/ ]; then
     mkdir logs/
 fi
@@ -32,7 +42,6 @@ echo "port:$port"
 
 #port=29501
 
-#device_list="2"
 set -x
 docker run -i --rm --gpus '"device='${device_list}'"' -p 8000:8000 --name test_vllm_inference --network=host --shm-size=16gb \
     -v /etc/localtime:/etc/localtime:ro \
@@ -61,5 +70,7 @@ curl http://localhost:8000/v1/completions \
         "max_tokens": 100,
         "temperature": 0
     }'
+
+
 
 EOF
