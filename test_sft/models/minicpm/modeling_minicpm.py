@@ -1160,7 +1160,7 @@ class MiniCPM3Model(MiniCPM3PreTrainedModel):
             )
             position_ids = position_ids.unsqueeze(0) # 插入batch维度
 
-        print(f"{position_ids=}")
+        #print(f"{position_ids=}")
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids) * self.config.scale_emb
 
