@@ -1,0 +1,1 @@
+bash ../utils/scp.sh && bash run_test_quant_in_docker.sh
