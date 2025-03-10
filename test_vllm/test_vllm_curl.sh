@@ -37,11 +37,23 @@
 
 colors="橘色,黄光色,绿色,青色,蓝光色,天蓝色,紫色,白色,粉色,粉红色,紫红色,浅绿色,棕色,橘红色,灰色,金色,浅蓝色,米色,深蓝色,咖啡色,桃红色,藏青色,紫罗兰色,深绿色,浅紫色,湖蓝色,黑色,墨绿色,银色"
 #colors="orange,yellow,green,cyan,blue,skyblue,purple,white,pink,pinkRed,fuchsia,lightgreen,brown,orangered,gray,golden,babyblue,beige,deepblue,coffee,crimson,navyblue,violet,darkgreen,mauve,dodgerblue,black,darkslategray,silver"
+prompt="请将以下的英文颜色名的转换成对应的16进制的RGB值，如'red'->'#FF0000'，输出格式为:颜色->RGB值,记住不要输出其它无关信息,现输入多个颜色:橘色,黄光色,绿色,青色,蓝光色,天蓝色,紫色,白色,粉色,粉红色,紫红色,浅绿色,棕色,橘红色,灰色,金色,浅蓝色,米色,深蓝色,咖啡色,桃红色,藏青色,紫罗兰色,深绿色,浅紫色,湖蓝色,黑色,墨绿色,银色\n"
 curl http://localhost:8000/v1/completions \
     -H "Content-Type: application/json" \
     -d '{
         "model": "/docker_model_input_path",
-        "prompt": "请将以下的英文颜色名的转换成对应的16进制的RGB值，如'red'->'#FF0000'，输出格式为:颜色->RGB值,记住不要输出其它无关信息,现输入多个颜色:橘色,黄光色,绿色,青色,蓝光色,天蓝色,紫色,白色,粉色,粉红色,紫红色,浅绿色,棕色,橘红色,灰色,金色,浅蓝色,米色,深蓝色,咖啡色,桃红色,藏青色,紫罗兰色,深绿色,浅紫色,湖蓝色,黑色,墨绿色,银色\n",
-        "max_tokens": 2000,
+        "prompt": "'"${prompt}"'",
+        "max_tokens": 32000,
+        "temperature": 0
+    }'
+
+
+prompt="9.9与9.11谁更大"
+curl http://localhost:8000/v1/completions \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "/docker_model_input_path",
+        "prompt": "'"${prompt}"'",
+        "max_tokens": 32000,
         "temperature": 0
     }'

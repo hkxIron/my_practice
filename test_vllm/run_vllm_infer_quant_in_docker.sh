@@ -7,7 +7,8 @@ time_str="$(date +%Y%m%d-%H-%M-%S)"
 
 root_path="$HOME/work"
 project_path="${root_path}/open/project/my_practice/"
-model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B/"
+#model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B/"
+model_path="${root_path}/open/hf_data_and_model/models/Qwen/QwQ-32B/"
 
 # docker image
 img1="icr"
@@ -18,8 +19,14 @@ img4='wsw/large-lm:1.0.15-4_vllm3' # 装了vllm的docker
 image="m${img1}.cloud${img2}ioff${img3}/${img4}"
 echo $image
 
-max_gpu_num=2 # 最大限制多少个gpu
-test_max_gpu_num $max_gpu_num
+auto_find_gpu=1
+if [ $auto_find_gpu -eq 1 ];then
+    max_gpu_num=4 # 最大限制多少个gpu
+    test_max_gpu_num $max_gpu_num
+else
+    device_list="2"
+fi
+
 if [ ! -d logs/ ]; then
     mkdir logs/
 fi
@@ -34,7 +41,7 @@ echo "port:$port"
 
 #device_list="2"
 set -x
-nohup docker run -i --rm --gpus '"device='${device_list}'"'  --name test_vllm_inference --network=host --shm-size=16gb \
+nohup docker run -i --rm --gpus '"device='${device_list}'"'  --name test_vllm_serve3 --network=host --shm-size=16gb \
     -v /etc/localtime:/etc/localtime:ro \
     -v ${project_path}:/docker_workspace \
     -v ${model_path}:/docker_model_input_path \
@@ -45,10 +52,17 @@ export PYTHONPATH=/docker_workspace && \
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64 && \
 . /opt/conda/etc/profile.d/conda.sh && \
 conda activate vllm && \
-python test_vllm/test_vllm_inference.py \
+pip install bitsandbytes -i https://mirrors.aliyun.com/pypi/simple/ && \
+pip install accelerate -i https://mirrors.aliyun.com/pypi/simple/ && \
+python test_vllm/test_vllm_infer_quantization.py \
 --base_model_path /docker_model_input_path \
  " 2>&1 |tee logs/log_${time_str}.txt
 
 set +x
-echo "`date` 预测结束"
+#echo "`date` 预测结束"
 
+
+# 阿里云：https://mirrors.aliyun.com/pypi/simple/
+# 清华大学：https://pypi.tuna.tsinghua.edu.cn/simple
+# 豆瓣：https://pypi.douban.com/simple/
+# 华为云：https://repo.huaweicloud.com/repository/pypi/simple/

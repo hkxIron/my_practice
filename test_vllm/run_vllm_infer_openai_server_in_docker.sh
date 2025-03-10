@@ -10,8 +10,9 @@ project_path="${root_path}/open/project/my_practice/"
 
 #model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B/"
 #model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-7B/"
-model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B-Instruct/"
+#model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-3B-Instruct/"
 #model_path="${root_path}/open/hf_data_and_model/models/Qwen/Qwen2.5-7B-Instruct/"
+model_path="${root_path}/open/hf_data_and_model/models/Qwen/QwQ-32B/"
 
 # docker image
 img1="icr"
@@ -24,7 +25,7 @@ echo $image
 
 auto_find_gpu=1
 if [ $auto_find_gpu -eq 1 ];then
-    max_gpu_num=1 # 最大限制多少个gpu
+    max_gpu_num=4 # 最大限制多少个gpu
     test_max_gpu_num $max_gpu_num
 else
     device_list="2"
@@ -41,7 +42,7 @@ echo "port:$port"
 #export MASTER_PORT=${port} && \
 
 #port=29501
-
+gpu_num=$(echo ${device_list}|awk -F',' '{print NF}')
 set -x
 docker run -i --rm --gpus '"device='${device_list}'"' -p 8000:8000 --name test_vllm_inference --network=host --shm-size=16gb \
     -v /etc/localtime:/etc/localtime:ro \
@@ -54,7 +55,10 @@ export PYTHONPATH=/docker_workspace && \
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64 && \
 . /opt/conda/etc/profile.d/conda.sh && \
 conda activate vllm && \
-vllm serve /docker_model_input_path " 
+vllm serve /docker_model_input_path \
+--tensor-parallel-size ${gpu_num} \
+" 
+# vllm中的张量并行就是有几张gpu，每个gpu上放模型的不同部分
 
 set +x
 echo "`date` 预测结束"
