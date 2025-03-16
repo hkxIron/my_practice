@@ -65,7 +65,7 @@ def ddp_setup(local_rank:int, world_size:int):
     torch.cuda.set_device(local_rank)
 
 
-class Trainer:
+class MyTrainer:
     def __init__(
             self,
             model: torch.nn.Module,
@@ -170,7 +170,7 @@ def main(local_rank: int, world_size: int, save_every: int, total_epochs: int, b
     if is_master:
         print(f"model:{model}")
         print(f"param size:{sum([p.numel() for p in model.parameters() if p.requires_grad])}")
-    trainer = Trainer(model, train_data, optimizer, local_rank, save_every)
+    trainer = MyTrainer(model, train_data, optimizer, local_rank, save_every)
     trainer.train(total_epochs)
 
     # 销毁各个gpu的进程池

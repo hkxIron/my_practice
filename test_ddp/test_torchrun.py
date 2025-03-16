@@ -97,7 +97,7 @@ class Trainer:
         print(f"Resuming training from snapshot at Epoch {self.epochs_run}")
 
     def _run_batch(self, source, targets):
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad() # 清空梯度
         output = self.parallel_model(source)
         loss = F.cross_entropy(output, targets)
         loss.backward()

@@ -70,9 +70,28 @@ def test_init_empty():
         model = nn.Sequential([nn.Linear(100000, 100000) for _ in range(1000)])  # This will take ~0 RAM!
     """
 
+def test_gsm8k():
+    data_dir="/home/hkx/data/work/hf_data_and_model/datas/openai/gsm8k/main"
+    #data = load_dataset(path=data_dir, name='main')[split]
+    data = load_dataset(path="parquet", data_files={
+        "train":"/home/hkx/data/work/hf_data_and_model/datas/openai/gsm8k/main/train-*.parquet",
+        "test":"/home/hkx/data/work/hf_data_and_model/datas/openai/gsm8k/main/test-*.parquet",
+    })
+    print(data)
+    print(data["train"])
+    df = data["train"].to_pandas()
+    df.to_csv("data/gsm8k/train.csv",index=None)
+    # rbql;  select a1 where a1.indexOf("James")!=-1
+    # https://github.com/mechatroner/vscode_rainbow_csv/blob/master/rbql_core/README.md#rbql-rainbow-query-language-description
+    data["test"].to_pandas().to_csv("data/gsm8k/test.csv",index=None)
+
+
 if __name__ == "__main__":
     print("sys args:")
     print(sys.argv)
+    test_gsm8k()
+
+    sys.exit()
     test_ds()
     test_ds2()
-    #test_init_empty()
+    test_init_empty()

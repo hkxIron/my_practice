@@ -1,0 +1,28 @@
+在当前目录下递归查找所有json文件中含有"Lamb"关键字的行 
+ grep -i "Lamb" $(find . -name '*.json')
+
+
+
+docker:
+docker login www.docker.cn -u yourname -p yourpasswd
+docker logout
+
+# docker build
+docker run -it www.docker.cn/zhangsan/large-lm:1.0.15-3
+docker build   -f ./llm_docker -t www.docker.cn/zhangsan/llm:1.0.0 .
+docker push www.docker.cn/zhangsan/llm:1.0.0
+
+
+#docker commit, docker容器里运行
+docker run -it --rm www.docker.cn/zhangsan/llm:1.0.0 bash
+docker run -it --rm www.docker.cn/zhangsan/large-lm:1.0.15-2
+docker run -it --rm www.docker.cn/zhangsan/large-lm:1.0.15-3 bash
+docker run -it --rm www.docker.cn/zhangsan/large-lm:1.0.15-4_vllm3 bash
+docker run -it www.docker.cn/zhangsan/large-lm:1.0.15-4_vllm3 /bin/bash
+# 安装lightgbm
+pip install lightgbm -i https://pypi.doubanio.com/simple
+再起一个shell, 然后docker ps 得到container_id
+docker ps|grep keyword
+docker commit xxa94cf www.docker.cn/zhangsan/llm:1.0.1
+# 推送到云端
+docker push www.docker.cn/zhangsan/llm:1.0.1 

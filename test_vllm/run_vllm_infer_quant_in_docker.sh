@@ -41,6 +41,7 @@ echo "port:$port"
 
 #device_list="2"
 set -x
+# docker run --rm -i ${image} bash
 nohup docker run -i --rm --gpus '"device='${device_list}'"'  --name test_vllm_serve3 --network=host --shm-size=16gb \
     -v /etc/localtime:/etc/localtime:ro \
     -v ${project_path}:/docker_workspace \
