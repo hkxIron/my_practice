@@ -86,12 +86,21 @@ def test_gsm8k():
     data["test"].to_pandas().to_csv("data/gsm8k/test.csv",index=None)
 
 
+def test_glue():
+    data = load_dataset("nyu-mll/glue", "mrpc")
+    print(data)
+    print(data["train"])
+    df = data["train"].to_pandas()
+    df.to_csv("data/glue/train.csv",index=None)
+
+
 if __name__ == "__main__":
     print("sys args:")
     print(sys.argv)
-    test_gsm8k()
 
+    test_glue()
     sys.exit()
+    test_gsm8k()
     test_ds()
     test_ds2()
     test_init_empty()
