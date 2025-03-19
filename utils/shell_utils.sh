@@ -14,7 +14,8 @@ show_run_time(){
 test_max_gpu_num(){
   local max_gpu_num=$1 # 最少多少个gpu
   echo "限制最大gpu数量：$max_gpu_num"
-  device_list=$(nvidia-smi|grep "NVIDIA-SMI" -A37|awk -F'|' '{ print($2,"|",$3) }'|grep ' 0MiB / ' -B1|grep "NVIDIA"|awk -F' ' '{print $1}'|head -n $max_gpu_size|tr '\n' ','|sed 's/,$//')
+  # 有时gpu里的总线会占用一点点,但显存并未占用
+  device_list=$(nvidia-smi|grep "NVIDIA-SMI" -A37|awk -F'|' '{ print($2,"|",$3) }'|grep -E '\b[0-9]{1,3}MiB / ' -B1|grep "NVIDIA"|awk -F' ' '{print $1}'|head -n $max_gpu_num|tr '\n' ','|sed 's/,$//')
   gpu_num=$(echo ${device_list}|awk -F',' '{print NF}')
   echo "gpu ids:$device_list size:${gpu_num}"
   if [ -z "${device_list}" ];then
