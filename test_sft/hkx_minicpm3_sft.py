@@ -246,7 +246,7 @@ def my_batch_padding_collator(examples: List[Dict[str, Any]], tokenizer, padding
         for key, value in example.items():
             if key == "labels":
                 pad_id = ignore_label
-            elif key.startswith("attention"):
+            elif key=="attention_mask":
                 pad_id = 0
             else:  # input token ids
                 pad_id = tokenizer.pad_token_id
@@ -260,7 +260,7 @@ def my_batch_padding_collator(examples: List[Dict[str, Any]], tokenizer, padding
                 padded_value = value + to_pad_ids
             update_value = padded_output.setdefault(key, [])
             update_value.append(padded_value)
-            padded_output[key] = update_value
+            #padded_output[key] = update_value
     # 转为tensor_ids
     padded_tensor = {k:torch.LongTensor(v) for k,v in padded_output.items()} # 均为torch.int64
     return padded_tensor         
