@@ -1,0 +1,13 @@
+UPN	Age at Diagnosis (Months)	Tumor Weight at Diagnosis (Grams)	Histology at Diagnosis	ILN at Diagnosis	PLN at Diagnosis	Time to Relapse (Days)*	Site of First Relapse	Symptoms at Relapse	Chemotherapy	Radiotherapy
+1	21	250	Mixed	None	None	68	Lung	No	DD4A	Whole lung
+78	9	261	Blastemal	None	None	138	Lungs	No	DD4A	Whole lung
+154	5	508	Blastemal	None	None	376	Retroperitoneum	No	DD4A	Flank
+165	14	505	Blastemal	None	None	120	Lung	Yes	DD4A	Whole lung
+399	10	271	Mixed	None	None	91	Retroperitoneum	No	DD4A	Flank
+434	3	254	Blastemal	None	None	94	Right renal fossa	No	DD4A	Delayed Flank
+450	15	178	Epithelial tubular	None	None	80	Contra lateral kidney	No	DD4A	Flank
+476	12	252	Mixed	None	None	186	Right renal fossa/Lungs	No	DD4A	Flank/Whole lung
+500	20	490	Mixed	Present-multiple	None	178	Abdomen	Yes	DD4A	Whole abdomen
+508	5	270	Mixed	Present	None	1305	Lung	No	DD4A	No
+756	13	540	Mixed	Present	None	107	Lung	No	DD4A	Whole lung
+800	23	169	Mixed	Present	None	246	Retroperitoneum	Yes	DD4A	abdomen

@@ -4,6 +4,7 @@ import matplotlib
 #matplotlib.use('TkAgg')  # 使用 TkAgg 后端
 import matplotlib.pyplot as plt
 from scipy.stats import beta
+import sys
 
 def test_gamma():
     import numpy as np
@@ -105,7 +106,21 @@ def plot_all():
     plt.show()
     plt.savefig("beta_distribution_alL.png") 
 
+def plot_function():
+    x = np.linspace(-10, 10, 1000)
+    y = np.log(1+np.exp(x))+1 # 有点像relu,保证y的输出永远为正数, 这样y可以作为beta(a,b)的伪计数参数
+
+    # 绘制概率密度函数
+    plt.plot(x, y, label=f'log(1+exp(x))+1') 
+    plt.title('log(1+exp(x))+1')
+    plt.xlabel('x')
+    plt.ylabel('Probability Density')
+    plt.legend()
+    plt.savefig("beta_tranform_func.png") 
+
 if __name__=="__main__":
+    plot_function()
+    sys.exit()
     test_gamma()
     plot_all()
-    #plot1()
+    plot1()
